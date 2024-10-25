@@ -1,79 +1,70 @@
+import java.util.*; 
 import java.io.IOException; 
-import java.util.Iterator; 
-import java.util.StringTokenizer;
 
-import org.apache.hadoop.conf.JobConf; 
 import org.apache.hadoop.fs.Path; 
-import org.apache.hadoop.io.IntWritable; 
-import org.apache.hadoop.io.LongWritable; 
-import org.apache.hadoop.io.Text; 
-import org.apache.hadoop.mapred.FileInputFormat; 
-import org.apache.hadoop.mapred.FileOutputFormat; 
-import org.apache.hadoop.mapred.JobClient; 
-import org.apache.hadoop.mapred.Mapper; 
-import org.apache.hadoop.mapred.OutputCollector; 
-import org.apache.hadoop.mapred.Reducer; 
-import org.apache.hadoop.mapred.Reporter; 
-import org.apache.hadoop.mapred.MapReduceBase;
+import org.apache.hadoop.conf.*; 
+import org.apache.hadoop.io.*; 
+import org.apache.hadoop.mapred.*; 
+import org.apache.hadoop.util.*; 
 
-public class ProcessUnits {
-
-    // Lớp Mapper
-    public static class E_EMapper extends MapReduceBase implements Mapper<LongWritable, Text, Text, IntWritable> {
-        // Hàm Map
-        public void map(LongWritable key, Text value, OutputCollector<Text, IntWritable> output, Reporter reporter) throws IOException {
-            String line = value.toString();
-            String lastToken = null;
-            StringTokenizer tokenizer = new StringTokenizer(line, "\t");
-            String year = tokenizer.nextToken();  // Trích xuất năm
+public class bt1 {
+    public static class E_EMapper extends MapReduceBase implements 
+       Mapper<LongWritable, Text, Text, IntWritable> {
+        
+        // Map function 
+        public void map(LongWritable key, Text value, 
+                        OutputCollector<Text, IntWritable> output, Reporter reporter) throws IOException { 
+            String line = value.toString(); 
+            StringTokenizer tokenizer = new StringTokenizer(line, "\t"); 
+            String year = tokenizer.nextToken(); 
+            int sum = 0;
+            int count = 0;
             
-            // Duyệt qua các token để lấy token cuối cùng (giá trị avgPrice)
+            // Tính tổng và đếm số giá trị tiêu thụ điện
             while (tokenizer.hasMoreTokens()) {
-                lastToken = tokenizer.nextToken();
+                int consumption = Integer.parseInt(tokenizer.nextToken());
+                sum += consumption;
+                count++;
             }
-
-            // Chuyển đổi token cuối thành số nguyên (avgPrice)
-            int avgPrice = Integer.parseInt(lastToken);
-            output.collect(new Text(year), new IntWritable(avgPrice));  // Thu thập kết quả năm và avgPrice
+            
+            int avgConsumption = sum / count;  // Tính mức tiêu thụ trung bình
+            output.collect(new Text(year), new IntWritable(avgConsumption)); 
         }
     }
-
-    // Lớp Reducer
-    public static class E_EReduce extends MapReduceBase implements Reducer<Text, IntWritable, Text, IntWritable> {
-        // Hàm Reduce
-        public void reduce(Text key, Iterator<IntWritable> values, OutputCollector<Text, IntWritable> output, Reporter reporter) throws IOException {
-            int threshold = 30;  // Ngưỡng để so sánh
-            int value;
-
-            // Duyệt qua từng giá trị và kiểm tra nếu lớn hơn 30
-            while (values.hasNext()) {
-                value = values.next().get();
-                if (value > threshold) {
-                    output.collect(key, new IntWritable(value));  // Xuất ra năm và giá trị tiêu thụ nếu lớn hơn 30
+    
+    public static class E_EReduce extends MapReduceBase implements 
+        Reducer<Text, IntWritable, Text, IntWritable> {
+        
+        // Reduce function 
+        public void reduce(Text key, Iterator<IntWritable> values, 
+                           OutputCollector<Text, IntWritable> output, Reporter reporter) throws IOException { 
+            int threshold = 30;
+            
+            while (values.hasNext()) { 
+                int avgConsumption = values.next().get();
+                if (avgConsumption > threshold) { 
+                    output.collect(key, new IntWritable(avgConsumption)); 
                 }
             }
         }
     }
 
-    // Hàm chính
-    public static void main(String[] args) throws Exception {
-        JobConf conf = new JobConf(ProcessUnits.class);
-        conf.setJobName("max_electricity_units");
-
+    // Main function 
+    public static void main(String[] args) throws Exception { 
+        JobConf conf = new JobConf(bt1.class); 
+        conf.setJobName("max_electricity_units"); 
+        
         conf.setOutputKeyClass(Text.class);
-        conf.setOutputValueClass(IntWritable.class);
-
-        conf.setMapperClass(E_EMapper.class);
-        conf.setReducerClass(E_EReduce.class);
-
-        conf.setInputFormat(org.apache.hadoop.mapred.TextInputFormat.class);
-        conf.setOutputFormat(org.apache.hadoop.mapred.TextOutputFormat.class);
-
-        // Định nghĩa đường dẫn file input và output
+        conf.setOutputValueClass(IntWritable.class); 
+        conf.setMapperClass(E_EMapper.class); 
+        conf.setCombinerClass(E_EReduce.class); 
+        conf.setReducerClass(E_EReduce.class); 
+        conf.setInputFormat(TextInputFormat.class); 
+        conf.setOutputFormat(TextOutputFormat.class); 
+        
         FileInputFormat.setInputPaths(conf, new Path(args[0])); 
-        FileOutputFormat.setOutputPath(conf, new Path(args[1]));
-
-        // Chạy job
-        JobClient.runJob(conf);
-    }
+        FileOutputFormat.setOutputPath(conf, new Path(args[1])); 
+        
+        JobClient.runJob(conf); 
+    } 
 }
